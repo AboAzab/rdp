@@ -21,32 +21,56 @@ jobs:
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
 
+      - name: Enable Multiple Sessions & Disconnect Console
+        run: |
+          # Enable multiple sessions
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Force | Out-Null
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name 'fSingleSessionPerUser' -Value 0 -Type DWord -Force
+          
+          # Restart service
+          Restart-Service -Name "TermService" -Force
+          Start-Sleep -Seconds 5
+          
+          # Disconnect current console session
+          try {
+            $sessions = query user
+            $consoleSession = ($sessions | Select-String 'console') -split '\s+' 
+            $sessionId = $consoleSession[2]
+            Write-Host "Disconnecting console session ID: $sessionId"
+            tsdiscon $sessionId
+            Start-Sleep -Seconds 3
+          } catch {
+            Write-Host "Could not disconnect console: $($_.Exception.Message)"
+          }
+
+      - name: Create tunnel config
+        run: |
+          @"
+          tunnel: 64f30b0b-64cf-40fd-88d5-ac86509c0aed
+          
+          ingress:
+            - hostname: rdp.aboodi24.com
+              service: tcp://localhost:3389
+            - service: http_status:404
+          "@ | Out-File -FilePath config.yml -Encoding UTF8
+
       - name: Start Cloudflare Tunnel
         env:
           TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
         run: |
-          # Start tunnel with token
-          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--config", "config.yml", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log
           
-          Start-Sleep -Seconds 15
+          Start-Sleep -Seconds 20
           
           Write-Host "=========================================="
-          Write-Host "Cloudflare Tunnel Started!"
-          Write-Host "=========================================="
-          Write-Host "Connect to your configured hostname"
+          Write-Host "Tunnel: rdp.aboodi24.com"
           Write-Host "Username: kame23"
           Write-Host "Password: S5316875844@a"
           Write-Host "=========================================="
-          
-          Get-Content tunnel.log
 
       - name: Keep alive
         run: |
           while ($true) {
             Start-Sleep -Seconds 300
             Write-Host "Session active: $(Get-Date)"
-            if (-not (Get-Process cloudflared -ErrorAction SilentlyContinue)) {
-              Write-Host "Restarting tunnel..."
-              Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "run", "--token", "$env:CLOUDFLARE_TUNNEL_TOKEN" -NoNewWindow
-            }
           }
