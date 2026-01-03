@@ -21,6 +21,23 @@ jobs:
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
 
+      - name: Enable Multiple RDP Sessions
+        run: |
+          # Create registry path if it doesn't exist
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Force | Out-Null
+          
+          # Disable single session restriction
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name 'fSingleSessionPerUser' -Value 0 -Type DWord -Force
+          
+          # Allow multiple connections
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name 'MaxInstanceCount' -Value 10 -Type DWord -Force
+          
+          # Restart Terminal Service
+          Restart-Service -Name "TermService" -Force
+          Start-Sleep -Seconds 5
+          
+          Write-Host "Multiple RDP sessions enabled"
+
       - name: Create tunnel config
         run: |
           @"
@@ -31,28 +48,20 @@ jobs:
               service: tcp://localhost:3389
             - service: http_status:404
           "@ | Out-File -FilePath config.yml -Encoding UTF8
-          
-          Write-Host "Config created:"
-          Get-Content config.yml
 
       - name: Start Cloudflare Tunnel
         env:
           TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
         run: |
-          # Use token method but config forces TCP
-          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--config", "config.yml", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log -RedirectStandardError tunnel_error.log
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--config", "config.yml", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log
           
           Start-Sleep -Seconds 20
           
           Write-Host "=========================================="
-          Write-Host "Cloudflare Tunnel Started!"
-          Write-Host "Connect to: rdp.aboodi24.com"
+          Write-Host "Tunnel: rdp.aboodi24.com"
           Write-Host "Username: kame23"
           Write-Host "Password: S5316875844@a"
           Write-Host "=========================================="
-          
-          if (Test-Path tunnel.log) { Get-Content tunnel.log }
-          if (Test-Path tunnel_error.log) { Get-Content tunnel_error.log }
 
       - name: Keep alive
         run: |
