@@ -1,0 +1,62 @@
+name: RDP with Cloudflare Tunnel
+
+on: [workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Download Cloudflared
+        run: |
+          Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
+
+      - name: Setup RDP
+        run: |
+          net user kame23 S5316875844@a /add
+          net localgroup administrators kame23 /add
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-Service -Name "TermService" -StartupType Automatic
+          Start-Service -Name "TermService"
+          Start-Sleep -Seconds 10
+
+      - name: Create tunnel config
+        run: |
+          @"
+          tunnel: 64f30b0b-64cf-40fd-88d5-ac86509c0aed
+          
+          ingress:
+            - hostname: rdp.aboodi24.com
+              service: tcp://localhost:3389
+            - service: http_status:404
+          "@ | Out-File -FilePath config.yml -Encoding UTF8
+          
+          Write-Host "Config created:"
+          Get-Content config.yml
+
+      - name: Start Cloudflare Tunnel
+        env:
+          TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        run: |
+          # Use token method but config forces TCP
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--config", "config.yml", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log -RedirectStandardError tunnel_error.log
+          
+          Start-Sleep -Seconds 20
+          
+          Write-Host "=========================================="
+          Write-Host "Cloudflare Tunnel Started!"
+          Write-Host "Connect to: rdp.aboodi24.com"
+          Write-Host "Username: kame23"
+          Write-Host "Password: S5316875844@a"
+          Write-Host "=========================================="
+          
+          if (Test-Path tunnel.log) { Get-Content tunnel.log }
+          if (Test-Path tunnel_error.log) { Get-Content tunnel_error.log }
+
+      - name: Keep alive
+        run: |
+          while ($true) {
+            Start-Sleep -Seconds 300
+            Write-Host "Session active: $(Get-Date)"
+          }
