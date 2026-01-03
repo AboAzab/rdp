@@ -1,4 +1,4 @@
-name: RDP with Bore
+name: RDP with LocalXpose
 
 on: [workflow_dispatch]
 
@@ -7,11 +7,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
-      - name: Download Bore
+      - name: Download LocalXpose
         run: |
-          Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
-          Expand-Archive bore.zip -DestinationPath .
-          Move-Item .\bore.exe .\bore.exe -Force
+          Invoke-WebRequest https://api.localxpose.io/api/v2/downloads/loclx-windows-amd64.zip -OutFile loclx.zip
+          Expand-Archive loclx.zip -DestinationPath .
 
       - name: Setup RDP
         run: |
@@ -23,36 +22,28 @@ jobs:
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
 
-      - name: Start Bore Tunnel
+      - name: Start LocalXpose Tunnel
+        env:
+          LOCLX_TOKEN: ${{ secrets.LOCLX_TOKEN }}
         run: |
-          Start-Process -FilePath ".\bore.exe" -ArgumentList "local", "3389", "--to", "bore.pub" -NoNewWindow -RedirectStandardOutput bore.log -RedirectStandardError bore_error.log
+          # Login with token
+          .\loclx.exe account login --token $env:LOCLX_TOKEN
           
-          Start-Sleep -Seconds 15
+          # Start tunnel
+          Start-Process -FilePath ".\loclx.exe" -ArgumentList "tunnel", "tcp", "--to", "localhost:3389" -NoNewWindow -RedirectStandardOutput tunnel.log
           
-          # Get the output
-          if (Test-Path bore.log) {
-            $output = Get-Content bore.log -Raw
-            Write-Host $output
-            
-            # Try to extract port
-            if ($output -match "bore\.pub:(\d+)") {
-              $port = $matches[1]
-              Write-Host "=========================================="
-              Write-Host "CONNECT TO: bore.pub:$port"
-              Write-Host "Username: kame23"
-              Write-Host "Password: S5316875844@a"
-              Write-Host "=========================================="
-            }
-          }
+          Start-Sleep -Seconds 20
           
-          if (Test-Path bore_error.log) {
-            Write-Host "Errors:"
-            Get-Content bore_error.log
-          }
+          Get-Content tunnel.log
+          
+          Write-Host "=========================================="
+          Write-Host "Connection info above"
+          Write-Host "Username: kame23 | Password: S5316875844@a"
+          Write-Host "=========================================="
 
       - name: Keep alive
         run: |
           while ($true) {
             Start-Sleep -Seconds 300
-            Write-Host "Session active: $(Get-Date)"
+            Write-Host "Active: $(Get-Date)"
           }
