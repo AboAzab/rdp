@@ -50,7 +50,7 @@ jobs:
           
           ingress:
             - hostname: rdp.aboodi24.com
-              service: tcp://localhost:3389
+              service: rdp://localhost:3389
             - service: http_status:404
           "@ | Out-File -FilePath config.yml -Encoding UTF8
 
