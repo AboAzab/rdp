@@ -1,4 +1,4 @@
-name: RDP with LocalXpose
+name: Direct RDP (No Tunnel)
 
 on: [workflow_dispatch]
 
@@ -7,11 +7,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
-      - name: Download LocalXpose
-        run: |
-          Invoke-WebRequest https://api.localxpose.io/api/v2/downloads/loclx-windows-amd64.zip -OutFile loclx.zip
-          Expand-Archive loclx.zip -DestinationPath .
-
       - name: Setup RDP
         run: |
           net user kame23 S5316875844@a /add
@@ -22,28 +17,19 @@ jobs:
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
 
-      - name: Start LocalXpose Tunnel
-        env:
-          LOCLX_TOKEN: ${{ secrets.LOCLX_TOKEN }}
+      - name: Get Public IP
         run: |
-          # Login with token
-          .\loclx.exe account login --token $env:LOCLX_TOKEN
-          
-          # Start tunnel
-          Start-Process -FilePath ".\loclx.exe" -ArgumentList "tunnel", "tcp", "--to", "localhost:3389" -NoNewWindow -RedirectStandardOutput tunnel.log
-          
-          Start-Sleep -Seconds 20
-          
-          Get-Content tunnel.log
-          
+          $ip = (Invoke-WebRequest -Uri "https://api.ipify.org").Content
           Write-Host "=========================================="
-          Write-Host "Connection info above"
-          Write-Host "Username: kame23 | Password: S5316875844@a"
+          Write-Host "PUBLIC IP: $ip"
+          Write-Host "Connect to: $ip:3389"
+          Write-Host "Username: kame23"
+          Write-Host "Password: S5316875844@a"
           Write-Host "=========================================="
 
       - name: Keep alive
         run: |
           while ($true) {
             Start-Sleep -Seconds 300
-            Write-Host "Active: $(Get-Date)"
+            Write-Host "Active"
           }
