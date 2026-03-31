@@ -1,4 +1,4 @@
-name: Direct RDP (No Tunnel)
+name: RDP with Ngrok Tunnel
 
 on: [workflow_dispatch]
 
@@ -7,6 +7,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
+      - name: Download Ngrok
+        run: |
+          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath .
+
       - name: Setup RDP
         run: |
           net user kame23 S5316875844@a /add
@@ -17,19 +22,37 @@ jobs:
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
 
-      - name: Get Public IP
+      - name: Start Ngrok Tunnel
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.3Bj1QGAtUtrbsTnFRYhovCo37Su_4kp4CMCDv5Anj74PVGQSo }}
         run: |
-          $ip = (Invoke-WebRequest -Uri "https://api.ipify.org").Content
+          .\ngrok.exe authtoken $env:NGROK_AUTH_TOKEN
+          Start-Process -FilePath ".\ngrok.exe" `
+            -ArgumentList "tcp", "3389" `
+            -NoNewWindow `
+            -RedirectStandardOutput ngrok.log `
+            -RedirectStandardError ngrok_error.log
+
+          Start-Sleep -Seconds 10
+
+          # Fetch the public tunnel URL from ngrok's local API
+          $response = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
+          $tunnelUrl = $response.tunnels[0].public_url
+          $rdpHost = $tunnelUrl -replace "tcp://", ""
+
           Write-Host "=========================================="
-          Write-Host "PUBLIC IP: $ip"
-          Write-Host "Connect to: $ip:3389"
+          Write-Host "Ngrok Tunnel Started!"
+          Write-Host "Connect via RDP to: $rdpHost"
           Write-Host "Username: kame23"
           Write-Host "Password: S5316875844@a"
           Write-Host "=========================================="
+
+          if (Test-Path ngrok.log) { Get-Content ngrok.log }
+          if (Test-Path ngrok_error.log) { Get-Content ngrok_error.log }
 
       - name: Keep alive
         run: |
           while ($true) {
             Start-Sleep -Seconds 300
-            Write-Host "Active"
+            Write-Host "Session active: $(Get-Date)"
           }
